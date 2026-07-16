@@ -1,0 +1,12 @@
+[{:itonami.blueprint/id "cloud-itonami-isic-5819"
+  :itonami.blueprint/name "Other publishing activities"
+  :itonami.blueprint/isic-rev4 "5819"
+  :itonami.blueprint/domain :services/specialty-publishing
+  :itonami.blueprint/license "AGPL-3.0-or-later"
+  :itonami.blueprint/social-impact [:editorial-integrity :creator-rights :accurate-record-keeping :timely-distribution]
+  :itonami.blueprint/governor :specpub-governor
+  :itonami.blueprint/robotics false
+  :itonami.blueprint/required-technologies [:identity :forms :dmn :bpmn :audit-ledger]
+  :itonami.blueprint/status :public-oss
+  :itonami.blueprint/maturity :implemented
+  :db/id -1}]
