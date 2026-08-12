@@ -1,0 +1,372 @@
+(ns specpubops.render-html
+  "Build-time HTML renderer for `docs/samples/operator-console.html`.
+
+  Closes flagship checklist item 2 for this repo: it previously had a
+  hand-written `docs/index.html` product face but NO operator console and
+  no generator at all. This namespace drives the REAL actor stack
+  (`specpubops.operation` -> `specpubops.governor` -> `specpubops.phase`
+  -> `specpubops.store`) through `langgraph.graph/run*`, exactly the way
+  this repo's own `specpubops.sim` demo driver does, and renders the
+  resulting store.
+
+  EVERY id, name, number, rule, detail string and disposition on the page
+  comes out of a real run:
+
+    - titles come from `specpubops.store/all-titles` (the `demo-data`
+      seed -- `title-1`/`title-2`/`title-3`, verified BEFORE this file was
+      written by running `clojure -M:dev:run` and reading the ledger it
+      printed);
+    - every ledger row is a fact the graph's `:commit`/`:hold` node
+      actually appended via `store/append-ledger!`;
+    - every violation rule and its Japanese detail string is the literal
+      text `specpubops.governor` produced;
+    - the op/phase gate tables are derived from `governor/allowed-ops`,
+      `governor/always-escalate-ops` and `phase/phases` themselves, not
+      transcribed by hand -- so they cannot drift away from the code.
+
+  Nothing on the page is hand-typed domain content. `title-99` is not a
+  fabricated customer: it is deliberately absent from the seeded title
+  directory, which is precisely what makes the governor HARD-hold it.
+
+  Deterministic: no timestamps, no randomness, and every map is rendered
+  through `sorted-kv` / every set through `sort`, so no hash-map
+  iteration order can leak into the bytes. Two consecutive runs are
+  byte-identical.
+
+  Usage: `clojure -M:dev:render-html [out-file]`
+  (default `docs/samples/operator-console.html`)."
+  (:require [jp-go-dds.skin]
+            [clojure.string :as str]
+            [specpubops.advisor :as advisor]
+            [specpubops.governor :as governor]
+            [specpubops.operation :as op]
+            [specpubops.phase :as phase]
+            [specpubops.store :as store]
+            [langgraph.graph :as g]))
+
+;; ----------------------------- the real run -----------------------------
+
+(defn- coordinator
+  "The acting operator context. Actor id/role are this repo's own
+  (`specpubops.sim`), not invented."
+  [ph]
+  {:actor-id "coord-1" :actor-role :publishing-coordinator :phase ph})
+
+(defn- exec! [actor tid request ph]
+  (g/run* actor {:request request :context (coordinator ph)} {:thread-id tid}))
+
+(defn- approve! [actor tid]
+  (g/run* actor {:approval {:status :approved :by "publishing-coordinator-1"}}
+          {:thread-id tid :resume? true}))
+
+(defn run-demo!
+  "Runs a fresh seeded store through a scenario reaching every
+  disposition this actor can produce:
+
+    committed  -- `title-1` logs a production record at phase 1
+                  (assisted-logging: governor-clean but the phase gate
+                  still demands a human, who approves), then again at
+                  phase 3 where the same op auto-commits; `title-2`
+                  schedules a production operation and coordinates a
+                  distribution, both auto-committing clean at phase 3;
+                  `title-1` flags a content concern, which ALWAYS
+                  escalates at any phase (governor `always-escalate-ops`
+                  and `phase/phases` agree independently) and is
+                  approved.
+
+    phase hold -- `title-2` retries the very same, governor-clean
+                  distribution op at phase 0 (read-only). No governor
+                  violation at all; the rollout gate alone holds it
+                  (`:phase-disabled`).
+
+    HARD hold  -- `title-3` is registered but NOT verified; `title-99`
+                  is not in the title directory at all (both
+                  `:title-unverified`); a substituted advisor returns
+                  `:effect :commit`, claiming direct actuation outside
+                  governance (`:effect-not-propose`); and the stock
+                  advisor is pushed out of scope so its rationale
+                  finalizes an editorial-content decision and issues a
+                  copyright clearance (`:scope-excluded`). None of these
+                  ever reaches a human -- they are permanent and
+                  un-overridable.
+
+  Returns the store. Every field rendered below is read back out of it."
+  []
+  (let [db    (store/seed-db)
+        actor (op/build db)]
+
+    ;; --- committed -------------------------------------------------------
+    (exec! actor "t1-log-p1"
+           {:op :log-production-record :title-id "title-1"
+            :patch {:design-status "final art approved" :print-run 20000}} 1)
+    (approve! actor "t1-log-p1")
+
+    (exec! actor "t1-log-p3"
+           {:op :log-production-record :title-id "title-1"
+            :patch {:finish-spec "matte-uv-coated" :print-run 20000}} 3)
+
+    (exec! actor "t2-schedule"
+           {:op :schedule-production-operation :title-id "title-2"
+            :patch {:stage "proofing" :date "2026-08-01"}} 3)
+
+    (exec! actor "t2-distribute"
+           {:op :coordinate-distribution :title-id "title-2"
+            :patch {:channel "wholesale" :ship-date "2026-09-15"}} 3)
+
+    (exec! actor "t1-concern"
+           {:op :flag-content-concern :title-id "title-1"
+            :patch {:concern "possible trademark similarity to an existing seasonal-character property"
+                    :confidence 0.92}} 3)
+    (approve! actor "t1-concern")
+
+    ;; --- phase gate holds a governor-clean proposal -----------------------
+    (exec! actor "t2-phase0"
+           {:op :coordinate-distribution :title-id "title-2"
+            :patch {:channel "wholesale" :ship-date "2026-09-15"}} 0)
+
+    ;; --- HARD holds ------------------------------------------------------
+    (exec! actor "t3-log"
+           {:op :log-production-record :title-id "title-3"
+            :patch {:design-status "draft"}} 3)
+
+    (exec! actor "t99-log"
+           {:op :log-production-record :title-id "title-99"
+            :patch {:design-status "unknown"}} 3)
+
+    (let [actor-direct (op/build db {:advisor (reify advisor/Advisor
+                                                (-advise [_ _ req]
+                                                  (assoc (advisor/infer nil req) :effect :commit)))})]
+      (exec! actor-direct "t1-direct"
+             {:op :schedule-production-operation :title-id "title-1"
+              :patch {:stage "print-run"}} 3))
+
+    (exec! actor "t1-scope"
+           {:op :log-production-record :title-id "title-1"
+            :out-of-scope? true :patch {}} 3)
+
+    db))
+
+;; ----------------------------- rendering helpers -----------------------------
+
+(defn- esc [v]
+  (-> (str v)
+      (str/replace "&" "&amp;")
+      (str/replace "<" "&lt;")
+      (str/replace ">" "&gt;")
+      (str/replace "\"" "&quot;")))
+
+(defn- label
+  "Keyword -> its name, anything else -> its printed form. `:basis` is a
+  vector of keywords on a hold but of cited title-id strings on a commit,
+  so both shapes flow through here."
+  [x]
+  (if (keyword? x) (name x) (str x)))
+
+(defn- join-labels [xs]
+  (str/join ", " (map label xs)))
+
+(defn- sorted-kv
+  "Render a map as `k=v; ..` with keys in a stable sorted order --
+  never relying on map iteration order for the page bytes."
+  [m]
+  (str/join "; " (for [k (sort-by str (keys m))]
+                   (str (label k) "=" (label (get m k))))))
+
+(defn- yes-no [b klass-yes klass-no]
+  (if b
+    (str "<span class=\"" klass-yes "\">yes</span>")
+    (str "<span class=\"" klass-no "\">no</span>")))
+
+(defn- hard? [fact]
+  (and (= :governor-hold (:t fact)) (seq (:violations fact))))
+
+;; ----------------------------- sections -----------------------------
+
+(defn- status-cell [ledger title-id]
+  (let [f (last (filter #(= (:title-id %) title-id) ledger))]
+    (cond
+      (nil? f) "<span class=\"muted\">no activity this run</span>"
+      (= :committed (:t f)) "<span class=\"ok\">committed</span>"
+      (hard? f) (str "<span class=\"critical\">HARD hold &middot; "
+                     (esc (label (-> f :violations first :rule))) "</span>")
+      (= :governor-hold (:t f))
+      (str "<span class=\"warn\">phase hold &middot; "
+           (esc (label (:phase-reason f))) " (phase " (esc (:phase f)) ")</span>")
+      :else (str "<span class=\"muted\">" (esc (label (:t f))) "</span>"))))
+
+(defn- title-row [ledger {:keys [title-id name registered? verified?]}]
+  (let [mine (filter #(= (:title-id %) title-id) ledger)]
+    (format "        <tr><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
+            (esc title-id) (esc name)
+            (yes-no registered? "ok" "critical")
+            (yes-no verified? "ok" "critical")
+            (count (filter #(= :committed (:t %)) mine))
+            (count (filter #(= :governor-hold (:t %)) mine))
+            (status-cell ledger title-id))))
+
+(defn- gate-row
+  "One row of the op contract, derived from `governor/allowed-ops`,
+  `governor/always-escalate-ops` and `phase/phases` -- never transcribed."
+  [op]
+  (let [phase-3      (get phase/phases 3)
+        first-write  (first (sort (keep (fn [[p {:keys [writes]}]]
+                                          (when (contains? writes op) p))
+                                        phase/phases)))
+        auto?        (contains? (:auto phase-3) op)
+        always?      (contains? governor/always-escalate-ops op)]
+    (format "        <tr><td><code>:%s</code></td><td>%s</td><td>%s</td></tr>"
+            (esc (clojure.core/name op))
+            (if first-write (str "phase " (esc first-write)) "<span class=\"muted\">never</span>")
+            (cond
+              always? "<span class=\"warn\">ALWAYS human approval &middot; absent from every phase&rsquo;s <code>:auto</code> set</span>"
+              auto?   "<span class=\"ok\">auto-commit when governor-clean</span>"
+              :else   "<span class=\"warn\">human approval</span>"))))
+
+(defn- phase-row [[p {:keys [label writes auto]}]]
+  (format "        <tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
+          (esc p) (esc label)
+          (if (seq writes) (esc (join-labels (sort-by clojure.core/name writes))) "<span class=\"muted\">none</span>")
+          (if (seq auto) (esc (join-labels (sort-by clojure.core/name auto))) "<span class=\"muted\">none</span>")))
+
+(defn- hard-hold-row [{:keys [op title-id violations confidence]}]
+  (let [{:keys [rule detail]} (first violations)]
+    (format "        <tr><td><code>%s</code></td><td><code>:%s</code></td><td><span class=\"critical\">%s</span></td><td>%s</td><td>%s</td></tr>"
+            (esc title-id) (esc (label op)) (esc (label rule)) (esc detail) (esc confidence))))
+
+(defn- ledger-row [i {:keys [t op title-id disposition basis phase-reason confidence] :as f}]
+  (format "        <tr><td>%s</td><td>%s</td><td><code>:%s</code></td><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td></tr>"
+          (inc i)
+          (if (hard? f)
+            (str "<span class=\"critical\">" (esc (label t)) "</span>")
+            (if (= :committed t)
+              (str "<span class=\"ok\">" (esc (label t)) "</span>")
+              (str "<span class=\"warn\">" (esc (label t)) "</span>")))
+          (esc (label op)) (esc title-id) (esc (label disposition))
+          (esc (cond (seq basis) (join-labels basis)
+                     phase-reason (str "phase gate: " (label phase-reason))
+                     :else ""))
+          (esc confidence)))
+
+(defn- coordination-row [i {:keys [op title-id payload]}]
+  (format "        <tr><td>%s</td><td><code>:%s</code></td><td><code>%s</code></td><td>%s</td><td>%s</td></tr>"
+          (inc i) (esc (label op)) (esc title-id)
+          (esc (sorted-kv (dissoc payload :approved-by :title-id)))
+          (if-let [by (:approved-by payload)]
+            (str "<span class=\"warn\">" (esc by) "</span>")
+            "<span class=\"ok\">auto-commit (governor-clean)</span>")))
+
+;; ----------------------------- document -----------------------------
+
+(defn render
+  "Renders the whole operator-console document from a store `db` that has
+  already been driven by `run-demo!` (or any other real scenario)."
+  [db]
+  (let [ledger      (vec (store/ledger db))
+        titles      (store/all-titles db)
+        coord-log   (vec (store/coordination-log db))
+        hard-holds  (filterv hard? ledger)
+        commits     (filterv #(= :committed (:t %)) ledger)]
+    (str
+     "<html lang=\"en\"><head><meta charset=\"utf-8\">"
+     "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+     "<title>cloud-itonami-isic-5819 &middot; specialty publishing operations</title><style>"
+     (jp-go-dds.skin/dds+skin)
+     "</style></head><body>\n"
+     "<header class=\"bar\">\n"
+     "  <h1>Other publishing activities (ISIC 5819) — Operator Console</h1>\n"
+     "  <span class=\"badge\">read-only sample · governor-gated · content-concern flags always human-approved</span>\n"
+     "</header>\n"
+     "<main>\n"
+
+     "  <section class=\"card\">\n"
+     "    <h2>Titles in production</h2>\n"
+     "    <p class=\"muted\">Build-time snapshot generated from <code>specpubops.store</code> by <code>specpubops.render-html</code> (<code>clojure -M:dev:render-html</code>). A title is any greeting-card / calendar / poster / catalog line in production. A title must be independently <code>:registered?</code> <em>and</em> <code>:verified?</code> in the store before any proposal for it may commit — or even escalate to a human.</p>\n"
+     "    <table>\n"
+     "      <thead><tr><th>Title</th><th>Name</th><th>Registered</th><th>Verified</th><th>Commits</th><th>Holds</th><th>Last op status</th></tr></thead>\n"
+     "      <tbody>\n"
+     (str/join "\n" (map (partial title-row ledger) titles)) "\n"
+     "      </tbody>\n"
+     "    </table>\n"
+     "  </section>\n"
+
+     "  <section class=\"card\">\n"
+     "    <h2>Action gate (SpecPubGovernor × rollout phase)</h2>\n"
+     "    <p class=\"muted\">Derived from <code>governor/allowed-ops</code>, <code>governor/always-escalate-ops</code> and <code>phase/phases</code> at build time, so this table cannot drift away from the code. Anything outside this closed allowlist is a scope violation by construction. Confidence floor: <code>" (esc governor/confidence-floor) "</code>.</p>\n"
+     "    <table>\n"
+     "      <thead><tr><th>Op</th><th>First phase permitted to write</th><th>Disposition at phase 3 when governor-clean</th></tr></thead>\n"
+     "      <tbody>\n"
+     (str/join "\n" (map gate-row (sort-by name governor/allowed-ops))) "\n"
+     "      </tbody>\n"
+     "    </table>\n"
+     "  </section>\n"
+
+     "  <section class=\"card\">\n"
+     "    <h2>Rollout phases</h2>\n"
+     "    <p class=\"muted\">A governor HOLD always stays HOLD — the phase gate can only add caution, never remove it. Note that <code>:flag-content-concern</code> is writable from phase 3 yet is absent from <em>every</em> phase&rsquo;s auto set: that is a permanent structural fact, not a milestone still to come.</p>\n"
+     "    <table>\n"
+     "      <thead><tr><th>Phase</th><th>Label</th><th>Writes</th><th>Auto-commit eligible</th></tr></thead>\n"
+     "      <tbody>\n"
+     (str/join "\n" (map phase-row (sort-by key phase/phases))) "\n"
+     "      </tbody>\n"
+     "    </table>\n"
+     "  </section>\n"
+
+     "  <section class=\"card\">\n"
+     "    <h2>HARD holds this run</h2>\n"
+     "    <p class=\"muted\">Permanent, un-overridable blocks. These never reach a human approver at all — the graph routes them straight to <code>:hold</code>. The rule and detail text below are the literal values <code>specpubops.governor</code> emitted.</p>\n"
+     "    <table>\n"
+     "      <thead><tr><th>Title</th><th>Op</th><th>Rule</th><th>Governor detail</th><th>Advisor confidence</th></tr></thead>\n"
+     "      <tbody>\n"
+     (str/join "\n" (map hard-hold-row hard-holds)) "\n"
+     "      </tbody>\n"
+     "    </table>\n"
+     "  </section>\n"
+
+     "  <section class=\"card\">\n"
+     "    <h2>Audit ledger (this run)</h2>\n"
+     "    <p class=\"muted\">The append-only immutable decision-fact log: " (count ledger) " facts — " (count commits) " committed, " (count (filter #(= :governor-hold (:t %)) ledger)) " held (of which " (count hard-holds) " are HARD governor violations; the remainder carry no violation at all and were held by the rollout phase gate alone).</p>\n"
+     "    <table>\n"
+     "      <thead><tr><th>#</th><th>Fact</th><th>Op</th><th>Title</th><th>Disposition</th><th>Basis / reason</th><th>Confidence</th></tr></thead>\n"
+     "      <tbody>\n"
+     (str/join "\n" (map-indexed ledger-row ledger)) "\n"
+     "      </tbody>\n"
+     "    </table>\n"
+     "  </section>\n"
+
+     "  <section class=\"card\">\n"
+     "    <h2>Committed coordination log</h2>\n"
+     "    <p class=\"muted\">The only writes that reached the SSoT. A row carries an approver only when a human actually resumed the interrupted graph; the rest cleared the governor and the phase-3 auto set on their own.</p>\n"
+     "    <table>\n"
+     "      <thead><tr><th>#</th><th>Op</th><th>Title</th><th>Payload</th><th>Approved by</th></tr></thead>\n"
+     "      <tbody>\n"
+     (str/join "\n" (map-indexed coordination-row coord-log)) "\n"
+     "      </tbody>\n"
+     "    </table>\n"
+     "  </section>\n"
+
+     "</main>\n"
+     "<footer class=\"footer\">\n"
+     "  <p class=\"muted\">Regenerate with <code>clojure -M:dev:render-html</code>. Deterministic: byte-identical across reruns against the same seed — no timestamps, no randomness, no map-iteration order in the page bytes.</p>\n"
+     "</footer>\n"
+     "</body></html>\n")))
+
+(defn -main
+  "Refuses to write a console that would not show a real governor block.
+  A page with no hold is not evidence of a governor, and a page whose
+  only holds are rollout-phase holds is not evidence of an
+  un-overridable one."
+  [& args]
+  (let [out  (or (first args) "docs/samples/operator-console.html")
+        db   (run-demo!)
+        hs   (filter #(= :governor-hold (:t %)) (store/ledger db))
+        hard (filter hard? (store/ledger db))]
+    (when (empty? hs)
+      (throw (ex-info "no :governor-hold fact on the ledger — refusing to write a console that shows no real hold"
+                      {:ledger-facts (count (store/ledger db))})))
+    (when (empty? hard)
+      (throw (ex-info "no HARD governor violation on the ledger — refusing to write a console whose only holds are phase-gate holds"
+                      {:holds (count hs)})))
+    (spit out (render db) :encoding "UTF-8")
+    (println "wrote" out "(" (count (store/ledger db)) "ledger facts,"
+             (count hs) "holds," (count hard) "HARD,"
+             (count (store/coordination-log db)) "committed coordination records )")))
