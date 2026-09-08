@@ -36,7 +36,7 @@
   Usage: `clojure -M:dev:render-html [out-file]`
   (default `docs/samples/operator-console.html`)."
   (:require [jp-go-dds.skin]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [specpubops.advisor :as advisor]
             [specpubops.governor :as governor]
             [specpubops.operation :as op]
