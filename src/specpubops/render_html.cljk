@@ -14,7 +14,7 @@
 
     - titles come from `specpubops.store/all-titles` (the `demo-data`
       seed -- `title-1`/`title-2`/`title-3`, verified BEFORE this file was
-      written by running `clojure -M:dev:run` and reading the ledger it
+      written by running `kbb -M:dev:run` and reading the ledger it
       printed);
     - every ledger row is a fact the graph's `:commit`/`:hold` node
       actually appended via `store/append-ledger!`;
@@ -33,7 +33,7 @@
   iteration order can leak into the bytes. Two consecutive runs are
   byte-identical.
 
-  Usage: `clojure -M:dev:render-html [out-file]`
+  Usage: `kbb -M:dev:render-html [out-file]`
   (default `docs/samples/operator-console.html`)."
   (:require [jp-go-dds.skin]
             [kotoba.lang.text :as str]
@@ -280,7 +280,7 @@
 
      "  <section class=\"card\">\n"
      "    <h2>Titles in production</h2>\n"
-     "    <p class=\"muted\">Build-time snapshot generated from <code>specpubops.store</code> by <code>specpubops.render-html</code> (<code>clojure -M:dev:render-html</code>). A title is any greeting-card / calendar / poster / catalog line in production. A title must be independently <code>:registered?</code> <em>and</em> <code>:verified?</code> in the store before any proposal for it may commit — or even escalate to a human.</p>\n"
+     "    <p class=\"muted\">Build-time snapshot generated from <code>specpubops.store</code> by <code>specpubops.render-html</code> (<code>kbb -M:dev:render-html</code>). A title is any greeting-card / calendar / poster / catalog line in production. A title must be independently <code>:registered?</code> <em>and</em> <code>:verified?</code> in the store before any proposal for it may commit — or even escalate to a human.</p>\n"
      "    <table>\n"
      "      <thead><tr><th>Title</th><th>Name</th><th>Registered</th><th>Verified</th><th>Commits</th><th>Holds</th><th>Last op status</th></tr></thead>\n"
      "      <tbody>\n"
@@ -346,7 +346,7 @@
 
      "</main>\n"
      "<footer class=\"footer\">\n"
-     "  <p class=\"muted\">Regenerate with <code>clojure -M:dev:render-html</code>. Deterministic: byte-identical across reruns against the same seed — no timestamps, no randomness, no map-iteration order in the page bytes.</p>\n"
+     "  <p class=\"muted\">Regenerate with <code>kbb -M:dev:render-html</code>. Deterministic: byte-identical across reruns against the same seed — no timestamps, no randomness, no map-iteration order in the page bytes.</p>\n"
      "</footer>\n"
      "</body></html>\n")))
 

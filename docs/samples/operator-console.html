@@ -2468,7 +2468,7 @@ img,svg { max-width: 100%; height: auto; }</style></head><body>
 <main>
   <section class="card">
     <h2>Titles in production</h2>
-    <p class="muted">Build-time snapshot generated from <code>specpubops.store</code> by <code>specpubops.render-html</code> (<code>clojure -M:dev:render-html</code>). A title is any greeting-card / calendar / poster / catalog line in production. A title must be independently <code>:registered?</code> <em>and</em> <code>:verified?</code> in the store before any proposal for it may commit — or even escalate to a human.</p>
+    <p class="muted">Build-time snapshot generated from <code>specpubops.store</code> by <code>specpubops.render-html</code> (<code>kbb -M:dev:render-html</code>). A title is any greeting-card / calendar / poster / catalog line in production. A title must be independently <code>:registered?</code> <em>and</em> <code>:verified?</code> in the store before any proposal for it may commit — or even escalate to a human.</p>
     <table>
       <thead><tr><th>Title</th><th>Name</th><th>Registered</th><th>Verified</th><th>Commits</th><th>Holds</th><th>Last op status</th></tr></thead>
       <tbody>
@@ -2552,6 +2552,6 @@ img,svg { max-width: 100%; height: auto; }</style></head><body>
   </section>
 </main>
 <footer class="footer">
-  <p class="muted">Regenerate with <code>clojure -M:dev:render-html</code>. Deterministic: byte-identical across reruns against the same seed — no timestamps, no randomness, no map-iteration order in the page bytes.</p>
+  <p class="muted">Regenerate with <code>kbb -M:dev:render-html</code>. Deterministic: byte-identical across reruns against the same seed — no timestamps, no randomness, no map-iteration order in the page bytes.</p>
 </footer>
 </body></html>
