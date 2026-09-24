@@ -1,6 +1,6 @@
 (ns specpubops.store-contract-test
   "Contract tests for `specpubops.store/Store` protocol."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [specpubops.store :as store]))
 
 (deftest mem-store-title-lookup

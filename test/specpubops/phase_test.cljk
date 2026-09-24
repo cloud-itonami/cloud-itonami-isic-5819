@@ -1,6 +1,6 @@
 (ns specpubops.phase-test
   "Unit tests of `specpubops.phase` rollout logic."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [specpubops.phase :as phase]))
 
 (def clean-verdict {:hard? false :escalate? false})

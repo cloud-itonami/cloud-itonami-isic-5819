@@ -1,6 +1,6 @@
 (ns specpubops.advisor-test
   "Unit tests of `specpubops.advisor` proposal generation."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [specpubops.advisor :as adv]
             [specpubops.governor :as gov]
             [specpubops.store :as store]))
